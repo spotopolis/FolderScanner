@@ -1,3 +1,10 @@
+This script was created mainly for an issue I encountered with Radarr when I changed library settings to include the year (YYYY) format in the movie filenames. I was getting duplicate files one with the year in the title and one without. Since Radarr stores each movie in its own subfolder, I had 1000's of subfolders where some had 2 copies of a movie. This script is designed to determine what folders those are and prompt to delete the file without the year in the title while still allowing user interaction to verify before deletion.
+
+
+
+
+
+
 PowerShell Script: Directory File Scanner
 
 Description:
