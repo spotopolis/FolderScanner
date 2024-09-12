@@ -8,7 +8,7 @@ $path = ""
 
 # File extensions to include in search
 # Example: $extensions = @(".avi", ".divx", ".gifv", ".mp4", ".mpeg", ".mkv", ".mov", ".wmv")
-$extensions = @(".avi", ".divx", ".gifv", ".mp4", ".mpeg", ".mkv", ".mov", ".wmv")
+$extensions = @()
 
 #--------------------------------------#
 #---------Change values above----------#
