@@ -1,10 +1,10 @@
-﻿#--------------------------------------#
+#--------------------------------------#
 #---------Change values below----------#
 #--------------------------------------#
 
 # Directory location for script to scan
 # Example: $path = "%USERPROFILE%\Videos"
-$path = "%USERPROFILE%\Videos"
+$path = ""
 
 # File extensions to include in search
 # Example: $extensions = @(".avi", ".divx", ".gifv", ".mp4", ".mpeg", ".mkv", ".mov", ".wmv")
@@ -13,6 +13,9 @@ $extensions = @(".avi", ".divx", ".gifv", ".mp4", ".mpeg", ".mkv", ".mov", ".wmv
 #--------------------------------------#
 #---------Change values above----------#
 #--------------------------------------#
+
+# Save the current console color
+$originalColor = $Host.UI.RawUI.ForegroundColor
 
 # Get all files with the specified extensions
 $files = Get-ChildItem -Path $path -Recurse -File
@@ -47,17 +50,25 @@ Write-Progress -Activity "Scanning directories" -Status "Complete" -PercentCompl
 $totalFolders = ($files | Select-Object -ExpandProperty DirectoryName | Sort-Object -Unique).Count
 $foldersWithMultipleFiles = $filteredGroups.Count
 
+Write-Output "***************************************************************************"
+Write-Output ""
 Write-Output "Processing complete."
 Write-Output ""
 Write-Output "Total files scanned: $totalFiles"
 Write-Output "Total folders scanned: $totalFolders"
-Write-Output "Folders with more than one file: $foldersWithMultipleFiles"
+$Host.UI.RawUI.ForegroundColor = "Red"
+Write-Output "Total file conflicts to resolve (includes previously skipped files): $foldersWithMultipleFiles"
+$Host.UI.RawUI.ForegroundColor = $originalColor
+Write-Output ""
+Write-Output "***************************************************************************"
 Write-Output ""
 Write-Output "Names of folders with more than one file:"
 Write-Output ""
 $filteredGroups | ForEach-Object { Write-Output $_.Name }
 Write-Output ""
-Write-Output ""
+
+# Collect all files to be deleted
+$filesToDelete = @()
 
 # Path to the file that stores skipped files in the same directory as the script
 $skippedFilesPath = Join-Path -Path $PSScriptRoot -ChildPath "skipped_files.txt"
@@ -74,26 +85,99 @@ foreach ($group in $filteredGroups) {
     $filesWithoutYear = $filesInGroup | Where-Object { $_.Name -notmatch $yearPattern }
 
     foreach ($file in $filesWithoutYear) {
-        # Check if the file was previously skipped
+		# Check if the file was previously skipped
         if ($skippedFiles -contains $file.FullName) {
+			$Host.UI.RawUI.ForegroundColor = "Yellow"
             Write-Output "Previously skipped: $($file.FullName)"
+			$Host.UI.RawUI.ForegroundColor = $originalColor
             continue
-        }
+		}
+        $filesToDelete += $file
+    }
+}
 
-        $filesInGroup | ForEach-Object { Write-Output $_.Name }
-        Write-Output ""
-        $confirmation = Read-Host "Do you want to delete $($file.FullName)? (y/n)"
-        if ($confirmation -eq 'y') {
+Write-Output ""
+Write-Output "***************************************************************************"
+Write-Output ""
+
+# Check if there are files to be deleted
+if ($filesToDelete.Count -eq 0) {	
+    # Clear the progress bar
+    Write-Progress -Activity "Scanning directories" -Status "Complete" -Completed
+	Write-Output "No files to be deleted."	
+    if ($skippedFiles.Count -gt 0) {
+		$Host.UI.RawUI.ForegroundColor = "Yellow"
+        Write-Output "Previously skipped files:"
+		Write-Output ""
+        $skippedFiles | ForEach-Object { Write-Output $_ }
+		$Host.UI.RawUI.ForegroundColor = $originalColor
+    }
+	Write-Output ""
+	Write-Output ""
+    Write-Host "Press any key to close this window..."
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit
+}
+
+# Display all files to be deleted
+$Host.UI.RawUI.ForegroundColor = "Red"
+Write-Output "The following files will be deleted:"
+$Host.UI.RawUI.ForegroundColor = $originalColor
+$filesToDelete | ForEach-Object { Write-Output $_.FullName }
+Write-Output ""
+
+# Display files with year in the name for comparison
+$Host.UI.RawUI.ForegroundColor = "Green"
+Write-Output "Files to be kept:"
+$Host.UI.RawUI.ForegroundColor = $originalColor
+$filesWithYear = $filteredFiles | Where-Object { $_.Name -match $yearPattern }
+$filesWithYear | ForEach-Object { Write-Output $_.FullName }
+Write-Output ""
+
+# Initialize counters for summary
+$deletedFilesCount = 0
+$totalSpaceRegained = 0
+
+# Prompt the user for confirmation
+$confirmation = Read-Host "Do you want to delete all these files? (y/n) (Default 'Yes')"
+if ($confirmation -eq 'y' -or $confirmation -eq '') {
+    $filesToDelete | ForEach-Object {
+        $fileSize = $_.Length
+        Remove-Item -Path $_.FullName -Force
+        Write-Output "Deleted: $($_.FullName)"
+        $deletedFilesCount++
+        $totalSpaceRegained += $fileSize
+    }
+} else {
+    # Continue with one-by-one comparison
+    foreach ($file in $filesToDelete) {
+        $confirmation = Read-Host "Do you want to delete $($file.FullName)? (y/n) (Default 'Yes')"
+        if ($confirmation -eq 'y' -or $confirmation -eq '') {
+			$fileSize = $file.Length
             Remove-Item -Path $file.FullName -Force
             Write-Output "Deleted: $($file.FullName)"
-            Write-Output ""
+			$deletedFilesCount++
+            $totalSpaceRegained += $fileSize
+			Write-Output ""
         } else {
             Write-Output "Skipped: $($file.FullName)"
-            Write-Output ""
-            # Add the skipped file to the text file
+			Write-Output ""
+			# Add the skipped file to the text file
             Add-Content -Path $skippedFilesPath -Value $file.FullName
         }
     }
 }
 
-pause
+# Convert total space regained to gigabytes
+$totalSpaceRegainedGB = [math]::Round($totalSpaceRegained / 1GB, 2)
+
+# Display summary
+Write-Output ""
+Write-Output "Summary:"
+Write-Output "Total files deleted: $deletedFilesCount"
+Write-Output "Total space regained: $totalSpaceRegainedGB GB"
+Write-Output ""
+Write-Output ""
+
+Write-Host "Press any key to close this window..."
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
